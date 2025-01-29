@@ -1,44 +1,94 @@
+import java.awt.*;
 import java.io.*;
 import java.net.*;
+import javax.swing.*;
 
 public class Cliente {
     public static void main(String[] args) {
-        String endereco = "localhost"; // Endereço do servidor
-        int porta = 12345; // Porta do servidor
+        String endereco = "localhost"; 
+        int porta = 12345;
 
-        try (Socket socket = new Socket(endereco, porta)) {
-            System.out.println("Conectado ao servidor!");
+        // Configuração da interface gráfica
+        JFrame janela = new JFrame("Chat");
+        janela.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        janela.setPreferredSize(new Dimension(400, 300));
+        janela.setLocationRelativeTo(null);
+        janela.setLayout(new BorderLayout(10, 5));
+        janela.setResizable(false);
+
+        JLabel labelStatus = new JLabel("Aguardando conexão...");
+        labelStatus.setSize(300, 20);
+        labelStatus.setHorizontalAlignment(SwingConstants.CENTER);
+        labelStatus.setOpaque(true);
+        labelStatus.setBackground(new Color(230, 230, 230));
+        janela.add(labelStatus, BorderLayout.NORTH);
+
+        JTextArea areaChat = new JTextArea();
+        areaChat.setEditable(false);
+        areaChat.setFont(new Font("Verdana", 1, 12));
+        areaChat.setSize(400, 250);
+        areaChat.setAutoscrolls(true);
+        janela.add(areaChat, BorderLayout.CENTER);
+
+        JPanel panelEntrada = new JPanel(new FlowLayout());
+        JTextField campoEntrada = new JTextField(20);
+        panelEntrada.add(campoEntrada);
+        JButton botaoEnviar = new JButton("Enviar");
+        panelEntrada.add(botaoEnviar);
+        janela.add(panelEntrada, BorderLayout.SOUTH);
+
+        janela.pack();
+        janela.setVisible(true);
+
+        // Solicitar nome
+        String nomeUsuario = JOptionPane.showInputDialog(janela, "Digite seu nome:");
+
+        if (nomeUsuario == null || nomeUsuario.trim().isEmpty()) {
+            JOptionPane.showMessageDialog(janela, "Nome inválido. O programa será encerrado.");
+            System.exit(0);
+        }
+
+        Socket socket = null;
+        try {
+            socket = new Socket(endereco, porta); 
+            labelStatus.setText("Conectado ao servidor.");
 
             // Streams para comunicação
             BufferedReader entrada = new BufferedReader(new InputStreamReader(socket.getInputStream()));
             PrintWriter saida = new PrintWriter(socket.getOutputStream(), true);
+
+            saida.println(nomeUsuario);
 
             // Thread para ouvir mensagens do servidor
             new Thread(() -> {
                 try {
                     String mensagem;
                     while ((mensagem = entrada.readLine()) != null) {
-                        System.out.println(mensagem);
+                        areaChat.append(mensagem + "\n");
                     }
                 } catch (IOException e) {
-                    System.out.println("Conexão encerrada.");
+                    labelStatus.setText("Erro na conexão: " + e.getMessage());
                 }
             }).start();
 
-            // Envia mensagens para o servidor
-            BufferedReader teclado = new BufferedReader(new InputStreamReader(System.in));
-            String mensagem;
-            while (true) {
-                mensagem = teclado.readLine();
-                saida.println(mensagem);
-                if (mensagem.equalsIgnoreCase("sair")) {
-                    System.out.println("Você saiu do chat.");
-                    break;
+            // Método para enviar mensagens ao servidor
+            botaoEnviar.addActionListener(e -> {
+                String mensagem = campoEntrada.getText();
+                if (!mensagem.trim().isEmpty()) {
+                    saida.println(mensagem);
+                    campoEntrada.setText("");
                 }
-            }
+            });
 
         } catch (IOException e) {
-            System.out.println("Erro no cliente: " + e.getMessage());
+            labelStatus.setText("Erro na conexão: " + e.getMessage());
+            if (socket != null) {
+                try {
+                    socket.close(); 
+                } catch (IOException ex) {
+                    ex.printStackTrace();
+                }
+            }
         }
     }
 }
