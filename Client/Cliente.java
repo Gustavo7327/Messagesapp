@@ -2,6 +2,8 @@ import java.awt.*;
 import java.io.*;
 import java.net.*;
 import javax.swing.*;
+import java.awt.event.KeyAdapter;
+import java.awt.event.KeyEvent;
 
 public class Cliente {
     public static void main(String[] args) {
@@ -49,34 +51,60 @@ public class Cliente {
         }
 
         Socket socket = null;
+        PrintWriter saida = null;
+
         try {
             socket = new Socket(endereco, porta); 
             labelStatus.setText("Conectado ao servidor.");
 
             // Streams para comunicação
             BufferedReader entrada = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-            PrintWriter saida = new PrintWriter(socket.getOutputStream(), true);
+            saida = new PrintWriter(socket.getOutputStream(), true);
 
             saida.println(nomeUsuario);
 
             // Thread para ouvir mensagens do servidor
+            BufferedReader reader = entrada;
             new Thread(() -> {
                 try {
                     String mensagem;
-                    while ((mensagem = entrada.readLine()) != null) {
-                        areaChat.append(mensagem + "\n");
+                    while ((mensagem = reader.readLine()) != null) {
+                        if (!mensagem.equals("Digite seu nome:")) {
+                            areaChat.append(mensagem + "\n");
+                        }  
                     }
                 } catch (IOException e) {
                     labelStatus.setText("Erro na conexão: " + e.getMessage());
                 }
             }).start();
 
+            // Thread para monitorar a conexão periodicamente
+            Socket s = socket;
+            JLabel status = labelStatus;
+            new Thread(() -> {
+                while (true) {
+                    try {
+                        Thread.sleep(3000); // Verifica a cada 3 segundos
+                        if (!verificarConexao(s)) {
+                            status.setText("Conexão perdida!");
+                            break;
+                        }
+                    } catch (InterruptedException e) {
+                        break;
+                    }
+                }
+            }).start();
+
             // Método para enviar mensagens ao servidor
-            botaoEnviar.addActionListener(e -> {
-                String mensagem = campoEntrada.getText();
-                if (!mensagem.trim().isEmpty()) {
-                    saida.println(mensagem);
-                    campoEntrada.setText("");
+            PrintWriter pw = saida;
+            botaoEnviar.addActionListener(e -> enviarMensagem(pw, campoEntrada, labelStatus, s));
+
+            campoEntrada.addKeyListener(new KeyAdapter() {
+                @Override
+                public void keyPressed(KeyEvent e) {
+                    if (e.getKeyCode() == KeyEvent.VK_ENTER) {
+                        enviarMensagem(pw, campoEntrada, labelStatus, s);
+                    }
                 }
             });
 
@@ -89,6 +117,39 @@ public class Cliente {
                     ex.printStackTrace();
                 }
             }
+        }
+    }
+
+    // Método para enviar mensagens ao servidor
+    private static void enviarMensagem(PrintWriter saida, JTextField campoEntrada, JLabel labelStatus, Socket socket) {
+        if (verificarConexao(socket)) {
+            String mensagem = campoEntrada.getText();
+            if (!mensagem.trim().isEmpty()) {
+                saida.println(mensagem);
+                campoEntrada.setText("");
+            }
+        } else {
+            labelStatus.setText("Conexão encerrada.");
+            try {
+                if (socket != null) {
+                    socket.close();
+                }
+            } catch (IOException ex) {
+                labelStatus.setText("Erro ao fechar o socket: " + ex.getMessage());
+            }
+        }
+    }
+
+    // Método para verificar se o socket ainda está ativo
+    private static boolean verificarConexao(Socket socket) {
+        try {
+            if (socket == null || socket.isClosed()) {
+                return false;
+            }
+            socket.sendUrgentData(0xFF); // Envia um byte fora de banda para testar a conexão
+            return true;
+        } catch (IOException e) {
+            return false; // Se houver erro, o socket está desconectado
         }
     }
 }
